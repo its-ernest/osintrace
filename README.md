@@ -38,6 +38,7 @@ Or build from source:
 ```bash
 git clone https://github.com/its-ernest/opentrace
 cd opentrace
+go mod tidy
 make build
 ```
 

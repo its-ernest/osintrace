@@ -17,6 +17,15 @@ build:
 install:
 	go install -trimpath $(CMD_DIR)
 	@echo "  installed → $(shell go env GOPATH)/bin/$(BINARY)"
+	# check where Go installs binaries
+	go env GOPATH
+
+	# add it to your PATH — put this in your ~/.bashrc or ~/.zshrc
+	export PATH=$PATH:$(go env GOPATH)/bin
+
+	# reload
+	source ~/.bashrc
+	source ~/.zshrc
 
 ## tidy: Tidy go.mod and go.sum
 tidy:
