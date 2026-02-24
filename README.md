@@ -42,6 +42,20 @@ go mod tidy
 make build
 ```
 
+If it says command not found, 
+
+```bash
+# check where Go installs binaries
+	go env GOPATH
+
+	# add it to your PATH — put this in your ~/.bashrc or ~/.zshrc
+	export PATH=$PATH:$(go env GOPATH)/bin
+
+	# reload
+	source ~/.bashrc
+	source ~/.zshrc
+```
+
 Requires Go 1.22+.
 
 ---
