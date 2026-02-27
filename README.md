@@ -30,6 +30,8 @@ The core does not interpret results. It does not cluster, score, or display anyt
 ---
 
 ## Install
+
+Requires Go 1.22+.
 ```bash
 go install github.com/its-ernest/opentrace/cmd/opentrace@latest
 ```
@@ -42,38 +44,76 @@ go mod tidy
 make build
 ```
 
-If it says command not found, 
+**If the command is not found after install:**
 
+Go installs binaries to `$GOPATH/bin`. Add it to your PATH if it isn't already.
 ```bash
-# check where Go installs binaries
-	go env GOPATH
+# find your GOPATH
+go env GOPATH
 
-	# add it to your PATH — put this in your ~/.bashrc or ~/.zshrc
-	export PATH=$PATH:$(go env GOPATH)/bin
+# add to ~/.bashrc or ~/.zshrc
+export PATH=$PATH:$(go env GOPATH)/bin
 
-	# reload
-	source ~/.bashrc
-	source ~/.zshrc
+# reload
+source ~/.bashrc   # or source ~/.zshrc
 ```
-
-Requires Go 1.22+.
 
 ---
 
 ## Usage
 ```bash
-# Run a pipeline
+# run a pipeline
 opentrace run track.yaml
 
-# Install a module
+# install an official module by name
 opentrace install ip_locator
 
-# Uninstall a module
+# install a community module by repo
+opentrace install github.com/alice/opentrace-face-osint
+
+# uninstall a module
 opentrace uninstall ip_locator
 
-# List installed modules
+# list installed modules
 opentrace modules
 ```
+
+---
+
+## Installing modules
+
+**Official modules** are maintained in the opentrace-modules repository.
+Install them by name:
+```bash
+opentrace install ip_locator
+opentrace install social_patterns
+```
+
+**Community modules** live in their own repositories.
+Install them by passing the full repo path:
+```bash
+opentrace install github.com/alice/opentrace-face-osint
+opentrace install github.com/bob/opentrace-wifi-scanner
+```
+
+The installer detects which is which automatically.
+You will be prompted before installing any unverified module.
+```
+  name        : face_osint
+  version     : 0.1.0
+  author      : alice
+  description : Reverse face search across public platforms
+  official    : false
+  verified    : false
+
+  ⚠  face_osint is unverified (community module). Install anyway? (y/n):
+```
+
+Installed modules are stored in `~/.opentrace/bin/`.
+The local registry is at `~/.opentrace/registry.json`.
+
+Browse official and listed community modules:
+[github.com/its-ernest/opentrace-modules](https://github.com/its-ernest/opentrace-modules)
 
 ---
 
@@ -89,7 +129,8 @@ modules:
 
 **Input referencing**
 
-If `input` starts with `$`, it is treated as a reference to a previous module's output. The reference must match a module name that has already run in the same pipeline.
+If `input` starts with `$`, it is treated as a reference to a previous module's output.
+The reference must match a module name that has already run in the same pipeline.
 ```yaml
 modules:
   - name: ip_locator
@@ -103,23 +144,10 @@ Modules run sequentially in declaration order.
 
 ---
 
-## Modules
-
-Modules are standalone executables. They live in a separate repository and are installed on demand.
-```bash
-opentrace install ip_locator
-opentrace install social_patterns
-```
-
-Installed modules are stored in `~/.opentrace/bin/`. The registry is at `~/.opentrace/registry.json`.
-
-Browse available modules: [github.com/its-ernest/opentrace-modules](https://github.com/its-ernest/opentrace-modules)
-
----
-
 ## Writing a module
 
-Every module is a Go program that imports the opentrace SDK, implements one interface, and calls `sdk.Run()` in `main()`.
+Every module is a standalone Go binary that imports the opentrace SDK,
+implements one interface, and calls `sdk.Run()` in `main()`.
 ```go
 package main
 
@@ -133,7 +161,7 @@ func (m *MyModule) Run(input sdk.Input) (sdk.Output, error) {
     // input.Input  — the string passed from the pipeline or prior module
     // input.Config — the config map from the pipeline YAML
 
-    // print whatever you want here
+    // print whatever you want to the terminal here
 
     return sdk.Output{Result: "value passed to next module"}, nil
 }
@@ -141,37 +169,65 @@ func (m *MyModule) Run(input sdk.Input) (sdk.Output, error) {
 func main() { sdk.Run(&MyModule{}) }
 ```
 
-The SDK handles all stdin/stdout plumbing. You never touch it.
+The SDK handles all stdin/stdout plumbing between the core and your module.
+You never touch it directly.
 
 **SDK types**
 ```go
 type Input struct {
     Input  string         // the input string
-    Config map[string]any // config from pipeline YAML
+    Config map[string]any // config block from the pipeline YAML
 }
 
 type Output struct {
-    Result string // returned to core, passed to next module if referenced
+    Result string // stored by core, passed as input to next module if referenced
 }
 ```
 
-**Module repository structure**
+**Your module repository structure**
 ```
-opentrace-modules/
-└── my_module/
-    ├── main.go
-    ├── go.mod
-    └── manifest.yaml
+opentrace-your-module/
+├── main.go
+├── go.mod
+└── manifest.yaml
 ```
 ```yaml
 # manifest.yaml
-name: my_module
+name: your_module
 version: 0.1.0
 description: What this module does
 author: your_handle
+official: false
+verified: false
+entity_types: [ip]   # ip | email | username | domain | phone | text | url
 ```
 
-Submit a PR to [opentrace-modules](https://github.com/its-ernest/opentrace-modules) to publish your module.
+**Publishing**
+
+Anyone can install your module directly from your repo without any approval:
+```bash
+opentrace install github.com/you/opentrace-your-module
+```
+
+To list it in the official registry so it is discoverable by name,
+open a PR to [opentrace-modules](https://github.com/its-ernest/opentrace-modules)
+adding one entry to `modules/registry.json`:
+```json
+"your_module": {
+    "repo": "github.com/you/opentrace-your-module",
+    "version": "0.1.0",
+    "author": "you",
+    "description": "What your module does",
+    "official": false,
+    "verified": false
+}
+```
+
+That is the entire PR. One JSON block. Nobody else's code is touched.
+Once listed, users can install by name:
+```bash
+opentrace install your_module
+```
 
 ---
 
@@ -186,14 +242,23 @@ opentrace (core)
 └── passes output.Result to the next module if referenced
 
 opentrace-modules (separate repo)
-└── each module is an independent Go binary
+├── modules/registry.json        ← index of all official + listed community modules
+└── modules/<name>/<version>/    ← official modules maintained here
+    ├── main.go
+    ├── go.mod
+    └── manifest.yaml
+
+community modules
+└── each lives in its own repo    ← installed directly by repo path
     └── imports github.com/its-ernest/opentrace/sdk
 ```
 
-The core never knows what a module does. Modules never know they are being orchestrated.
+The core never knows what a module does.
+Modules never know they are being orchestrated.
+The only contract between them is stdin and stdout.
 
 ---
 
 ## License
 
-MIT
+Mozilla Public License Version 2.0
