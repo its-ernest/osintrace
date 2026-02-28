@@ -1,9 +1,9 @@
 
-# Writing an opentrace Module
+# Writing an osintrace Module
 
 ## What a module is
 
-An opentrace module is a **standalone Go binary**.
+An osintrace module is a **standalone Go binary**.
 
 It:
 
@@ -34,13 +34,13 @@ If you violate these rules, your module is broken by definition.
 Before your module starts, the core guarantees:
 
 ```text
-OPENTRACE_RUN_DIR=/abs/path/.opentrace/runs/<run-id>
-OPENTRACE_STEP_DIR=/abs/path/.opentrace/runs/<run-id>/<module-name>
+OSINTRACE_RUN_DIR=/abs/path/.osintrace/runs/<run-id>
+OSINTRACE_STEP_DIR=/abs/path/.osintrace/runs/<run-id>/<module-name>
 ```
 
 Rules:
 
-* `OPENTRACE_STEP_DIR` exists and is empty
+* `OSINTRACE_STEP_DIR` exists and is empty
 * Your module **owns** this directory
 * You may create any files or subdirectories inside it
 * You must not write anywhere else
@@ -50,7 +50,7 @@ Rules:
 ## Repository structure
 
 ```
-opentrace-my-module/
+osintrace-my-module/
 ├── main.go
 ├── go.mod
 └── manifest.yaml
@@ -59,7 +59,7 @@ opentrace-my-module/
 Repository name **must** be:
 
 ```
-opentrace-<module_name>
+osintrace-<module_name>
 ```
 
 Binary name **must** match `<module_name>`.
@@ -115,7 +115,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/its-ernest/opentrace/sdk"
+	"github.com/its-ernest/osintrace/sdk"
 )
 
 type MyModule struct{}
@@ -175,7 +175,7 @@ Pipeline:
 Resolution:
 
 ```text
-input.Input = /abs/path/.opentrace/runs/<id>/ip_locator/result.json
+input.Input = /abs/path/.osintrace/runs/<id>/ip_locator/result.json
 ```
 
 Your module **must treat this as opaque**.
@@ -205,7 +205,7 @@ If a downstream module needs your files, you **must** declare them.
 Create:
 
 ```text
-$OPENTRACE_STEP_DIR/output.json
+$OSINTRACE_STEP_DIR/output.json
 ```
 
 Example:
