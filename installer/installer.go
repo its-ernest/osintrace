@@ -234,7 +234,6 @@ func BinPath(name string) (string, error) {
 
 func printManifest(m *Manifest, repo string) {
 	fmt.Println()
-	fmt.Println("V0.1.3")
 	fmt.Printf("  name        : %s\n", m.Name)
 	fmt.Printf("  version     : %s\n", m.Version)
 	fmt.Printf("  author      : %s\n", m.Author)
