@@ -1,305 +1,49 @@
-# Writing an opentrace module
 
-A module is a standalone Go binary. It receives input over stdin,
-does its work, prints what it wants to the terminal, and returns
-a result string over stdout. The core handles all the wiring.
+# Writing an opentrace Module
 
----
+## What a module is
 
-## Quickstart
+An opentrace module is a **standalone Go binary**.
 
-```bash
-mkdir opentrace-my-module
-cd opentrace-my-module
-go mod init github.com/you/opentrace-my-module
-go get github.com/its-ernest/opentrace/sdk
-```
+It:
 
-Create `main.go`:
+* receives structured input via **stdin**
+* receives execution context via **environment variables**
+* writes files to its **own directory**
+* exits
 
-```go
-package main
-
-import (
-    "fmt"
-    "github.com/its-ernest/opentrace/sdk"
-)
-
-type MyModule struct{}
-
-func (m *MyModule) Name() string { return "my_module" }
-
-func (m *MyModule) Run(input sdk.Input) (sdk.Output, error) {
-    fmt.Println("  received:", input.Input)
-    return sdk.Output{Result: input.Input}, nil
-}
-
-func main() { sdk.Run(&MyModule{}) }
-```
-
-```bash
-go mod tidy
-go build -o my_module .
-```
-
-That is a working module.
+A module **does not return data** to the pipeline.
+It communicates **only through the filesystem**.
 
 ---
 
-## SDK types
+## Non-negotiable rules
 
-```go
-// what the core sends to your module over stdin
-type Input struct {
-    Input  string         // the input string — literal or from prior module
-    Config map[string]any // config block from the pipeline YAML
-}
+* **stdout is ignored**
+* **stderr is for humans**
+* **files are the API**
+* **exit code is truth**
+* **never write outside your StepDir**
 
-// what your module must return
-type Output struct {
-    Result string // JSON string passed to next module if referenced
-}
-```
+If you violate these rules, your module is broken by definition.
 
 ---
 
-## Reading input
+## Execution environment
 
-`input.Input` is always a plain string. What it contains depends on
-where it comes from in the pipeline.
+Before your module starts, the core guarantees:
 
-**First module in a pipeline — literal value from YAML:**
-
-```yaml
-- name: ip_locator
-  input: "8.8.8.8"
+```text
+OPENTRACE_RUN_DIR=/abs/path/.opentrace/runs/<run-id>
+OPENTRACE_STEP_DIR=/abs/path/.opentrace/runs/<run-id>/<module-name>
 ```
 
-```go
-func (m *IPLocator) Run(input sdk.Input) (sdk.Output, error) {
-    ip := input.Input   // "8.8.8.8"
-}
-```
+Rules:
 
-**Any module after — JSON string from prior module's output:**
-
-```yaml
-- name: asn_lookup
-  input: "$ip_locator"   # receives ip_locator's result string
-```
-
-```go
-func (m *ASNLookup) Run(input sdk.Input) (sdk.Output, error) {
-    // input.Input is a JSON string from ip_locator
-    // deserialize it into whatever you expect
-
-    var geo struct {
-        Latitude    float64 `json:"latitude"`
-        Longitude   float64 `json:"longitude"`
-        City        string  `json:"city"`
-        CountryCode string  `json:"country_code"`
-        Org         string  `json:"org"`
-    }
-
-    if err := json.Unmarshal([]byte(input.Input), &geo); err != nil {
-        return sdk.Output{}, fmt.Errorf("invalid input: %w", err)
-    }
-
-    // use geo.Org, geo.City, geo.Latitude etc.
-}
-```
-
-Your module defines its own struct matching what it expects.
-There is no shared schema — modules agree on structure by convention.
-
----
-
-## Reading config
-
-`input.Config` is `map[string]any`. Two ways to read it.
-
-**Direct key access — simple configs:**
-
-```go
-token, _ := input.Config["token"].(string)
-depth, _ := input.Config["depth"].(int)
-enabled, _ := input.Config["enabled"].(bool)
-```
-
-**Unmarshal into a struct — complex configs:**
-
-```go
-type config struct {
-    Token          string   `json:"token"`
-    OutputDir      string   `json:"output_dir"`
-    MinOccurrences int      `json:"min_occurrences"`
-    MaxContacts    int      `json:"max_contacts"`
-    LeakPaths      []string `json:"leak_paths"`
-}
-
-var cfg config
-configBytes, err := json.Marshal(input.Config)
-if err != nil {
-    return sdk.Output{}, fmt.Errorf("config marshal: %w", err)
-}
-if err := json.Unmarshal(configBytes, &cfg); err != nil {
-    return sdk.Output{}, fmt.Errorf("invalid config: %w", err)
-}
-```
-
-Marshal to bytes first, then unmarshal into your struct.
-You cannot unmarshal `map[string]any` directly.
-
----
-
-## Returning output
-
-`sdk.Output.Result` is a string. If you want the next module to
-receive structured data, marshal your result to JSON first.
-
-```go
-type result struct {
-    Subject      string `json:"subject"`
-    ContactsFile string `json:"contacts_file"`
-    ContactCount int    `json:"contact_count"`
-    Source       string `json:"source"`
-}
-
-raw, err := json.Marshal(result{
-    Subject:      subject,
-    ContactsFile: csvPath,
-    ContactCount: count,
-    Source:       "leak_cooccurrence_inference",
-})
-if err != nil {
-    return sdk.Output{}, fmt.Errorf("marshal result: %w", err)
-}
-
-return sdk.Output{Result: string(raw)}, nil
-```
-
-If your module is the last in the pipeline and nothing reads its
-output, you can return any string or an empty result:
-
-```go
-return sdk.Output{Result: ""}, nil
-```
-
----
-
-## Printing to terminal
-
-Your module owns its display. Print whatever is useful to the operator.
-Use `fmt.Printf` or `fmt.Println` freely — it goes directly to the
-terminal. It does not affect the result string.
-
-```go
-fmt.Printf("  ip       : %s\n", ip)
-fmt.Printf("  city     : %s, %s\n", geo.City, geo.CountryCode)
-fmt.Printf("  coords   : %.6f, %.6f\n", geo.Latitude, geo.Longitude)
-fmt.Printf("  confidence: %.2f\n", confidence)
-```
-
-The core reads only the last valid JSON line from stdout as the result.
-Everything else is display.
-
----
-
-## Full module example
-
-```go
-package main
-
-import (
-    "encoding/json"
-    "fmt"
-    "net/http"
-    "time"
-
-    "github.com/its-ernest/opentrace/sdk"
-)
-
-type IPLocator struct{}
-
-func (m *IPLocator) Name() string { return "ip_locator" }
-
-func (m *IPLocator) Run(input sdk.Input) (sdk.Output, error) {
-    ip := input.Input
-    token, _ := input.Config["token"].(string)
-
-    url := fmt.Sprintf("https://ipinfo.io/%s/json", ip)
-    if token != "" {
-        url += "?token=" + token
-    }
-
-    client := &http.Client{Timeout: 10 * time.Second}
-    resp, err := client.Get(url)
-    if err != nil {
-        return sdk.Output{}, fmt.Errorf("request failed: %w", err)
-    }
-    defer resp.Body.Close()
-
-    var data struct {
-        City    string `json:"city"`
-        Region  string `json:"region"`
-        Country string `json:"country"`
-        Loc     string `json:"loc"`
-        Org     string `json:"org"`
-    }
-    if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-        return sdk.Output{}, fmt.Errorf("decode: %w", err)
-    }
-
-    // print to terminal — module owns its display
-    fmt.Printf("  ip      : %s\n", ip)
-    fmt.Printf("  city    : %s, %s, %s\n", data.City, data.Region, data.Country)
-    fmt.Printf("  coords  : %s\n", data.Loc)
-    fmt.Printf("  org     : %s\n", data.Org)
-
-    // return structured result as JSON string
-    type result struct {
-        IP      string `json:"ip"`
-        City    string `json:"city"`
-        Region  string `json:"region"`
-        Country string `json:"country"`
-        Loc     string `json:"loc"`
-        Org     string `json:"org"`
-    }
-
-    raw, err := json.Marshal(result{
-        IP:      ip,
-        City:    data.City,
-        Region:  data.Region,
-        Country: data.Country,
-        Loc:     data.Loc,
-        Org:     data.Org,
-    })
-    if err != nil {
-        return sdk.Output{}, fmt.Errorf("marshal result: %w", err)
-    }
-
-    return sdk.Output{Result: string(raw)}, nil
-}
-
-func main() { sdk.Run(&IPLocator{}) }
-```
-
----
-
-## manifest.yaml
-
-Every module must include a `manifest.yaml` at the root of the repo.
-
-```yaml
-name: ip_locator           # snake_case, matches what users type in install + pipeline
-version: 0.1.0             # semver — bump on every release
-description: Resolves an IP to country/city/coordinates via IPinfo.io
-author: your_handle
-official: false            # only set by opentrace maintainers
-verified: false            # set after code review by opentrace maintainers
-entity_types: [ip]         # what kind of input this module expects
-                           # ip | email | username | domain | phone | text | url | coords
-```
+* `OPENTRACE_STEP_DIR` exists and is empty
+* Your module **owns** this directory
+* You may create any files or subdirectories inside it
+* You must not write anywhere else
 
 ---
 
@@ -312,82 +56,276 @@ opentrace-my-module/
 └── manifest.yaml
 ```
 
-Name your repo `opentrace-<module_name>`.
-The `opentrace-` prefix makes it discoverable and identifies it
-as part of the ecosystem.
+Repository name **must** be:
+
+```
+opentrace-<module_name>
+```
+
+Binary name **must** match `<module_name>`.
 
 ---
 
-## Common mistakes
+## SDK contract
 
-**Using `input.Value` instead of `input.Input`**
-
-```go
-// wrong
-subject := input.Value
-
-// correct
-subject := input.Input
-```
-
-**Unmarshaling config directly**
+### Types
 
 ```go
-// wrong — Config is map[string]any, not []byte
-json.Unmarshal(input.Config, &cfg)
+type Input struct {
+	Input  string         `json:"input"`
+	Config map[string]any `json:"config"`
+}
 
-// correct — marshal to bytes first
-b, _ := json.Marshal(input.Config)
-json.Unmarshal(b, &cfg)
-```
+type Context struct {
+	RunDir  string
+	StepDir string
+}
 
-**Returning a struct instead of a string**
-
-```go
-// wrong — Result is a string
-return sdk.Output{Result: myStruct}, nil
-
-// correct — marshal first
-raw, _ := json.Marshal(myStruct)
-return sdk.Output{Result: string(raw)}, nil
-```
-
-**Not printing anything**
-
-Your module is the display layer. The core prints nothing.
-If your module is silent, the operator sees a blank run.
-Print what you found.
-
----
-
-## Publishing
-
-Once your module works:
-
-1. Push to `github.com/you/opentrace-my-module`
-2. Users can install immediately by repo:
-
-```bash
-opentrace install github.com/you/opentrace-my-module
-```
-
-3. To list it in the registry for name-based install,
-   open a PR to [opentrace-modules](https://github.com/its-ernest/opentrace-modules)
-   adding one entry to `modules/registry.json`:
-
-```json
-"my_module": {
-    "repo": "github.com/you/opentrace-my-module",
-    "version": "0.1.0",
-    "author": "you",
-    "description": "What your module does",
-    "official": false,
-    "verified": false
+type Module interface {
+	Name() string
+	Run(input Input, ctx Context) error
 }
 ```
 
-Once merged, users install by name:
+### Meaning
 
-```bash
-opentrace install my_module
+* `input.Input`
+  A **string**, opaque to the core
+  May be:
+
+  * a literal
+  * a file path
+  * a URL
+  * an identifier
+
+* `input.Config`
+  Arbitrary configuration from the pipeline YAML
+
+* `ctx.StepDir`
+  Your writable workspace
+
+---
+
+## Minimal module example
+
+```go
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/its-ernest/opentrace/sdk"
+)
+
+type MyModule struct{}
+
+func (m *MyModule) Name() string { return "my_module" }
+
+func (m *MyModule) Run(input sdk.Input, ctx sdk.Context) error {
+	fmt.Fprintln(os.Stderr, "input:", input.Input)
+	fmt.Fprintln(os.Stderr, "working in:", ctx.StepDir)
+
+	// write outputs here
+
+	return nil
+}
+
+func main() {
+	sdk.Run(&MyModule{})
+}
 ```
+
+This is a **valid module**.
+
+---
+
+## Reading input
+
+`input.Input` is always a string.
+
+### Literal input (first module)
+
+Pipeline:
+
+```yaml
+- name: ip_locator
+  input: "8.8.8.8"
+```
+
+Module:
+
+```go
+ip := input.Input // "8.8.8.8"
+```
+
+---
+
+### Artifact input (downstream module)
+
+Pipeline:
+
+```yaml
+- name: asn_lookup
+  input:
+    from: ip_locator
+    artifact: result
+```
+
+Resolution:
+
+```text
+input.Input = /abs/path/.opentrace/runs/<id>/ip_locator/result.json
+```
+
+Your module **must treat this as opaque**.
+Do not assume format unless documented by convention.
+
+---
+
+## Writing outputs
+
+All outputs **must** be written inside `ctx.StepDir`.
+
+Example:
+
+```go
+out := filepath.Join(ctx.StepDir, "graph.json")
+os.WriteFile(out, data, 0644)
+```
+
+Nothing else is required for correctness.
+
+---
+
+## Declaring outputs (output.json)
+
+If a downstream module needs your files, you **must** declare them.
+
+Create:
+
+```text
+$OPENTRACE_STEP_DIR/output.json
+```
+
+Example:
+
+```json
+{
+  "artifacts": {
+    "graph": {
+      "path": "graph.json",
+      "type": "application/json"
+    },
+    "stats": {
+      "path": "stats.csv",
+      "type": "text/csv"
+    }
+  }
+}
+```
+
+Rules:
+
+* `path` is **relative to StepDir**
+* Artifact names are **stable API**
+* The core does **not** inspect file contents
+* Multiple artifacts are allowed
+
+This enables:
+
+* fan-out
+* caching
+* inspection
+* reproducibility
+
+---
+
+## Reading config
+
+### Direct access
+
+```go
+threshold, _ := input.Config["threshold"].(float64)
+enabled, _ := input.Config["enabled"].(bool)
+```
+
+### Structured config (recommended)
+
+```go
+//e.g
+type config struct {
+	ModelPath string `json:"model_path"`
+	MaxDepth  int    `json:"max_depth"`
+}
+
+var cfg config
+raw, _ := json.Marshal(input.Config)
+json.Unmarshal(raw, &cfg)
+```
+
+---
+
+## Printing & logging
+
+* **Use stderr only**
+* Print anything you want
+* Progress bars, tables, logs are fine
+
+```go
+fmt.Fprintln(os.Stderr, "nodes:", len(nodes))
+```
+
+**Never** print to stdout.
+
+Stdout is ignored and must not be used as a protocol.
+
+---
+
+## Exit behavior
+
+* `return nil` → success
+* `return error` → failure
+* Non-zero exit code stops the pipeline
+
+There is no partial success.
+
+---
+
+## Common mistakes (do not do these)
+
+### !!! Writing outside StepDir
+
+```go
+os.WriteFile("/tmp/out.json", b, 0644) // wrong
+```
+
+### !!! Using stdout
+
+```go
+fmt.Println("done") // wrong
+```
+
+### !!! Returning data instead of writing files
+
+Modules **do not return data**.
+Files are the output.
+
+---
+
+## manifest.yaml
+
+Every module **must** include `manifest.yaml`:
+
+```yaml
+name: graph_builder
+version: 0.1.0
+description: Builds a contact graph from phone metadata
+author: your_handle
+entity_types:
+  - phone
+```
+
+This is metadata only.
+It does not affect execution.
+
