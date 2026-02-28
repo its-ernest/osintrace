@@ -53,27 +53,21 @@ func saveRegistry(r Registry) error {
 
 // Install is the single entry point.
 //
-// Two forms accepted:
-//   opentrace install ip_locator                              → looks up name in opentrace-modules registry
-//   opentrace install github.com/user/repo                   → clones directly from that repo
+// Two forms:
+//   opentrace install ip_locator                        → looks up name in opentrace-modules registry
+//   opentrace install github.com/user/repo              → clones directly from that repo
 func Install(arg string) error {
 	if err := os.MkdirAll(BinDir(), 0o755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
-
-	if isRepoPath(arg) {
+	if strings.Contains(arg, "/") {
 		return installFromRepo(arg)
 	}
 	return installFromRegistry(arg)
 }
 
-// isRepoPath returns true if arg looks like a repo path (contains a slash).
-func isRepoPath(arg string) bool {
-	return strings.Contains(arg, "/")
-}
-
 // installFromRegistry looks up the module name in opentrace-modules/registry.json
-// then delegates to installFromRepo using the registered repo URL.
+// then delegates to installFromRepo.
 func installFromRegistry(name string) error {
 	tmp, err := os.MkdirTemp("", "opentrace-*")
 	if err != nil {
@@ -83,7 +77,6 @@ func installFromRegistry(name string) error {
 
 	fmt.Printf("  looking up %s in registry...\n", name)
 
-	// sparse clone just the registry.json
 	if out, err := exec.Command("git", "clone",
 		"--depth=1", "--filter=blob:none", "--sparse",
 		registryRepo, tmp,
@@ -97,13 +90,11 @@ func installFromRegistry(name string) error {
 		return fmt.Errorf("sparse-checkout: %s: %w", string(out), err)
 	}
 
-	// read registry.json
 	regData, err := os.ReadFile(filepath.Join(tmp, "registry.json"))
 	if err != nil {
-		return fmt.Errorf("cannot read registry.json from opentrace-modules: %w", err)
+		return fmt.Errorf("cannot read registry.json: %w", err)
 	}
 
-	// registry.json is map[name]repo_url
 	var index map[string]string
 	if err := json.Unmarshal(regData, &index); err != nil {
 		return fmt.Errorf("invalid registry.json: %w", err)
@@ -113,7 +104,7 @@ func installFromRegistry(name string) error {
 	if !ok {
 		return fmt.Errorf(
 			"module %q not found in registry\n\n"+
-				"  if this is a third-party module, install it directly:\n"+
+				"  install directly with:\n"+
 				"  opentrace install github.com/<user>/%s\n",
 			name, name,
 		)
@@ -123,20 +114,14 @@ func installFromRegistry(name string) error {
 	return installFromRepo(repoURL)
 }
 
-// installFromRepo clones a repo directly and builds the module.
-// arg can be:
-//   github.com/user/repo
-//   https://github.com/user/repo
+// installFromRepo clones a repo directly, reads manifest, prompts, builds.
 func installFromRepo(arg string) error {
-	// normalize to full URL
 	repoURL := arg
 	if !strings.HasPrefix(arg, "https://") && !strings.HasPrefix(arg, "http://") {
 		repoURL = "https://" + arg
 	}
 
-	// derive a local name from the last path segment
-	// github.com/user/opentrace-face-osint → face-osint
-	// github.com/user/contacts_graph_extract → contacts_graph_extract
+	// derive fallback name from last path segment
 	lastSegment := arg[strings.LastIndex(arg, "/")+1:]
 	localName := strings.TrimPrefix(lastSegment, "opentrace-")
 
@@ -154,20 +139,17 @@ func installFromRepo(arg string) error {
 		return fmt.Errorf("git clone failed: %s: %w", string(out), err)
 	}
 
-	// read manifest from root of repo
 	manifest, err := readManifest(filepath.Join(tmp, "manifest.yaml"))
 	if err != nil {
 		return fmt.Errorf("manifest: %w", err)
 	}
 
-	// manifest name takes priority over derived name
 	if manifest.Name != "" {
 		localName = manifest.Name
 	}
 
 	printManifest(manifest, repoURL)
 
-	// always prompt — no module is pre-trusted
 	fmt.Printf("  install %s? (y/n): ", localName)
 	var confirm string
 	fmt.Scan(&confirm)
@@ -179,7 +161,7 @@ func installFromRepo(arg string) error {
 	return build(localName, tmp, manifest, repoURL)
 }
 
-// build compiles the module and registers it locally.
+// build compiles the module binary and registers it.
 func build(name, srcDir string, manifest *Manifest, repo string) error {
 	binName := name
 	if runtime.GOOS == "windows" {
@@ -189,9 +171,10 @@ func build(name, srcDir string, manifest *Manifest, repo string) error {
 
 	fmt.Printf("  building %s@%s...\n", name, manifest.Version)
 
-	if out, err := exec.Command(
-		"go", "build", "-trimpath", "-o", binPath, srcDir,
-	).CombinedOutput(); err != nil {
+	cmd := exec.Command("go", "build", "-trimpath", "-o", binPath, ".")
+	cmd.Dir = srcDir
+
+	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("build failed:\n%s", string(out))
 	}
 
@@ -272,4 +255,4 @@ func readManifest(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("manifest missing required fields: name and version")
 	}
 	return &m, nil
-} 
+}
