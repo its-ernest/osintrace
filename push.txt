@@ -1,5 +1,5 @@
 git add .
->> git commit -m "release: v0.1.5"
->> git tag v0.1.5
->> git push origin main
->> git push origin v0.1.5
+git commit -m "release: v0.1.7: Refactored opentrace into osintrace"
+git tag v0.1.7
+git push origin main
+git push origin v0.1.7

@@ -1,4 +1,4 @@
-module github.com/its-ernest/opentrace
+module github.com/its-ernest/osintrace
 
 go 1.22
 

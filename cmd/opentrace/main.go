@@ -7,14 +7,14 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/its-ernest/opentrace/core"
-	"github.com/its-ernest/opentrace/installer"
+	"github.com/its-ernest/osintrace/core"
+	"github.com/its-ernest/osintrace/installer"
 	"github.com/spf13/cobra"
 )
 
 func main() {
 	root := &cobra.Command{
-		Use:   "opentrace",
+		Use:   "osintrace",
 		Short: "Modular OSINT pipeline runner",
 	}
 
@@ -41,7 +41,7 @@ func runCmd() *cobra.Command {
 			reg := installer.LoadRegistry()
 			for _, m := range p.Modules {
 				if _, ok := reg[m.Name]; !ok {
-					return fmt.Errorf("module %q not installed — run: opentrace install %s", m.Name, m.Name)
+					return fmt.Errorf("module %q not installed — run: osintrace install %s", m.Name, m.Name)
 				}
 			}
 
@@ -56,7 +56,7 @@ func runCmd() *cobra.Command {
 func installCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "install <module>",
-		Short: "Install a module from opentrace-modules",
+		Short: "Install a module from osintrace-modules",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return installer.Install(args[0])

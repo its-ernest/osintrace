@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const registryRepo = "https://github.com/its-ernest/opentrace-modules"
+const registryRepo = "https://github.com/its-ernest/osintrace-modules"
 
 type Manifest struct {
 	Name        string   `yaml:"name"`
@@ -32,8 +32,8 @@ type RegistryEntry struct {
 type Registry map[string]RegistryEntry
 
 func home() string         { h, _ := os.UserHomeDir(); return h }
-func BinDir() string       { return filepath.Join(home(), ".opentrace", "bin") }
-func registryPath() string { return filepath.Join(home(), ".opentrace", "registry.json") }
+func BinDir() string       { return filepath.Join(home(), ".osintrace", "bin") }
+func registryPath() string { return filepath.Join(home(), ".osintrace", "registry.json") }
 
 func LoadRegistry() Registry {
 	r := Registry{}
@@ -54,8 +54,8 @@ func saveRegistry(r Registry) error {
 // Install is the single entry point.
 //
 // Two forms:
-//   opentrace install ip_locator                        → looks up name in opentrace-modules registry
-//   opentrace install github.com/user/repo              → clones directly from that repo
+//   osintrace install ip_locator                        → looks up name in osintrace-modules registry
+//   osintrace install github.com/user/repo              → clones directly from that repo
 func Install(arg string) error {
 	if err := os.MkdirAll(BinDir(), 0o755); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
@@ -66,10 +66,10 @@ func Install(arg string) error {
 	return installFromRegistry(arg)
 }
 
-// installFromRegistry looks up the module name in opentrace-modules/registry.json
+// installFromRegistry looks up the module name in osintrace-modules/registry.json
 // then delegates to installFromRepo.
 func installFromRegistry(name string) error {
-	tmp, err := os.MkdirTemp("", "opentrace-*")
+	tmp, err := os.MkdirTemp("", "osintrace-*")
 	if err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func installFromRegistry(name string) error {
 		return fmt.Errorf(
 			"module %q not found in registry\n\n"+
 				"  install directly with:\n"+
-				"  opentrace install github.com/<user>/%s\n",
+				"  osintrace install github.com/<user>/%s\n",
 			name, name,
 		)
 	}
@@ -123,9 +123,9 @@ func installFromRepo(arg string) error {
 
 	// derive fallback name from last path segment
 	lastSegment := arg[strings.LastIndex(arg, "/")+1:]
-	localName := strings.TrimPrefix(lastSegment, "opentrace-")
+	localName := strings.TrimPrefix(lastSegment, "osintrace-")
 
-	tmp, err := os.MkdirTemp("", "opentrace-*")
+	tmp, err := os.MkdirTemp("", "osintrace-*")
 	if err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func Uninstall(name string) error {
 func List() {
 	reg := LoadRegistry()
 	if len(reg) == 0 {
-		fmt.Println("  no modules installed — run: opentrace install <name>")
+		fmt.Println("  no modules installed — run: osintrace install <name>")
 		return
 	}
 	fmt.Println()

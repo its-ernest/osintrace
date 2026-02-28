@@ -91,7 +91,7 @@ func Load(path string) (*Pipeline, error) {
 
 // Run executes the pipeline
 func Run(ctx context.Context, p *Pipeline, binDir string) error {
-	runDir, err := os.MkdirTemp("", "opentrace-run-*")
+	runDir, err := os.MkdirTemp("", "osintrace-run-*")
 	if err != nil {
 		return err
 	}

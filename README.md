@@ -1,10 +1,10 @@
-# opentrace
+# osintrace
 
 Modular OSINT pipeline runner.
 
-You define a pipeline. opentrace runs it. Modules do the work.
+You define a pipeline. osintrace runs it. Modules do the work.
 ```bash
-opentrace run track.yaml
+osintrace run track.yaml
 ```
 
 ---
@@ -34,19 +34,19 @@ The core does not interpret results. It does not cluster, score, or display anyt
 Requires Go 1.22+.
 ```bash
 #Reliable install
-GOPROXY=direct go install github.com/its-ernest/opentrace/cmd/opentrace@latest
+GOPROXY=direct go install github.com/its-ernest/osintrace/cmd/osintrace@latest
 
 #Or simply
-go install github.com/its-ernest/opentrace/cmd/opentrace@latest
+go install github.com/its-ernest/osintrace/cmd/osintrace@latest
 
 #Specific verrsion
-GOPROXY=direct go install github.com/its-ernest/opentrace/cmd/opentrace@v0.1.4
+GOPROXY=direct go install github.com/its-ernest/osintrace/cmd/osintrace@v0.1.4
 ```
 
 Or build from source:
 ```bash
-git clone https://github.com/its-ernest/opentrace
-cd opentrace
+git clone https://github.com/its-ernest/osintrace
+cd osintrace
 go mod tidy
 make build
 ```
@@ -70,37 +70,37 @@ source ~/.bashrc   # or source ~/.zshrc
 ## Usage
 ```bash
 # run a pipeline
-opentrace run track.yaml
+osintrace run track.yaml
 
 # install an official module by name
-opentrace install ip_locator
+osintrace install ip_locator
 
 # install a community module by repo
-opentrace install github.com/alice/opentrace-face-osint
+osintrace install github.com/alice/osintrace-face-osint
 
 # uninstall a module
-opentrace uninstall ip_locator
+osintrace uninstall ip_locator
 
 # list installed modules
-opentrace modules
+osintrace modules
 ```
 
 ---
 
 ## Installing modules
 
-**Official modules** are maintained in the opentrace-modules repository.
+**Official modules** are maintained in the osintrace-modules repository.
 Install them by name:
 ```bash
-opentrace install ip_locator
-opentrace install social_patterns
+osintrace install ip_locator
+osintrace install social_patterns
 ```
 
 **Community modules** live in their own repositories.
 Install them by passing the full repo path:
 ```bash
-opentrace install github.com/alice/opentrace-face-osint
-opentrace install github.com/bob/opentrace-wifi-scanner
+osintrace install github.com/alice/osintrace-face-osint
+osintrace install github.com/bob/osintrace-wifi-scanner
 ```
 
 The installer detects which is which automatically.
@@ -116,11 +116,11 @@ You will be prompted before installing any unverified module.
   ⚠  face_osint is unverified (community module). Install anyway? (y/n):
 ```
 
-Installed modules are stored in `~/.opentrace/bin/`.
-The local registry is at `~/.opentrace/registry.json`.
+Installed modules are stored in `~/.osintrace/bin/`.
+The local registry is at `~/.osintrace/registry.json`.
 
 Browse official and listed community modules:
-[github.com/its-ernest/opentrace-modules](https://github.com/its-ernest/opentrace-modules)
+[github.com/its-ernest/osintrace-modules](https://github.com/its-ernest/osintrace-modules)
 
 ---
 
@@ -153,12 +153,12 @@ Modules run sequentially in declaration order.
 
 ## Writing a module
 
-Every module is a standalone Go binary that imports the opentrace SDK,
+Every module is a standalone Go binary that imports the osintrace SDK,
 implements one interface, and calls `sdk.Run()` in `main()`.
 ```go
 package main
 
-import "github.com/its-ernest/opentrace/sdk"
+import "github.com/its-ernest/osintrace/sdk"
 
 type MyModule struct{}
 
@@ -193,7 +193,7 @@ type Output struct {
 
 **Your module repository structure**
 ```
-opentrace-your-module/
+osintrace-your-module/
 ├── main.go
 ├── go.mod
 └── manifest.yaml
@@ -213,16 +213,16 @@ entity_types: [ip]   # ip | email | username | domain | phone | text | url
 
 Anyone can install your module directly from your repo without any approval:
 ```bash
-opentrace install github.com/you/opentrace-your-module
+osintrace install github.com/you/osintrace-your-module
 
 ```
 
 To list it in the official registry so it is discoverable by name,
-open a PR to [opentrace-modules](https://github.com/its-ernest/opentrace-modules)
+open a PR to [osintrace-modules](https://github.com/its-ernest/osintrace-modules)
 adding one entry to `modules/registry.json`:
 ```json
 "your_module": {
-    "repo": "github.com/you/opentrace-your-module",
+    "repo": "github.com/you/osintrace-your-module",
     "version": "0.1.0",
     "author": "you",
     "description": "What your module does",
@@ -234,22 +234,22 @@ adding one entry to `modules/registry.json`:
 That is the entire PR. One JSON block. Nobody else's code is touched.
 Once listed, users can install by name:
 ```bash
-opentrace install your_module
+osintrace install your_module
 ```
 
 ---
 
 ## Architecture
 ```
-opentrace (core)
+osintrace (core)
 ├── reads pipeline YAML
-├── resolves module binaries from ~/.opentrace/bin/
+├── resolves module binaries from ~/.osintrace/bin/
 ├── runs each module as a subprocess
 │   ├── sends Input as JSON over stdin
 │   └── reads Output as JSON from stdout
 └── passes output.Result to the next module if referenced
 
-opentrace-modules (separate repo)
+osintrace-modules (separate repo)
 ├── modules/registry.json        ← index of all official + listed community modules
 └── modules/<name>/<version>/    ← official modules maintained here
     ├── main.go
@@ -258,7 +258,7 @@ opentrace-modules (separate repo)
 
 community modules
 └── each lives in its own repo    ← installed directly by repo path
-    └── imports github.com/its-ernest/opentrace/sdk
+    └── imports github.com/its-ernest/osintrace/sdk
 ```
 
 The core never knows what a module does.
@@ -267,13 +267,13 @@ The only contract between them is stdin and stdout.
 
 ---
 
-## Uninstall opentrace
+## Uninstall osintrace
 ```bash
 # remove the binary
-rm $(which opentrace)
+rm $(which osintrace)
 
 # remove all installed modules + registry
-rm -rf ~/.opentrace
+rm -rf ~/.osintrace
 ```
 
 ## License

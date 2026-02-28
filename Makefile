@@ -1,13 +1,13 @@
-BINARY    := opentrace
+BINARY    := osintrace
 BUILD_DIR := ./bin
-CMD_DIR   := ./cmd/opentrace
+CMD_DIR   := ./cmd/osintrace
 
 .PHONY: all build clean tidy test install
 
 ## all: Default — build the binary
 all: build
 
-## build: Compile to ./bin/opentrace
+## build: Compile to ./bin/osintrace
 build:
 	@mkdir -p $(BUILD_DIR)
 	go build -trimpath -o $(BUILD_DIR)/$(BINARY) $(CMD_DIR)
